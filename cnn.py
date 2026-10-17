@@ -3,20 +3,20 @@ import pandas
 import time
 import random
 import os
-import keras
+import argparse
 import datetime
 
 import pickle
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.wrappers.scikit_learn import KerasClassifier
-from keras.utils import np_utils
-from keras.callbacks import TensorBoard
-from keras.models import Sequential
-from keras.layers import Conv2D
-from keras.layers import MaxPooling2D
-from keras.layers import Flatten
-from keras.layers import Dense
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import (
+    Dense, Conv2D, MaxPooling2D, Flatten, BatchNormalization,
+    GlobalAveragePooling2D, Dropout, ReLU, Input, RandomTranslation,
+    RandomZoom, RandomRotation
+)
+from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.utils import to_categorical
 from training_plot import TrainingPlot
 
 
@@ -29,18 +29,22 @@ import massageData
 import utils
 from sklearn.metrics import confusion_matrix
 
-import tensorflow as tf
+def create_parser():
+    parser = argparse.ArgumentParser(description='Train a Quick Draw CNN.')
+    parser.add_argument('--max_iter', type=int, default=100)
+    parser.add_argument('--batch_size', type=int, default=500)
+    parser.add_argument('--data_folder', default='data/numpy_bitmap/')
+    parser.add_argument('--results_folder', default='results/')
+    parser.add_argument('--experiment_name')
+    parser.add_argument('--model_version', type=int, default=1)
+    parser.add_argument('--using_binarization', action='store_true')
+    parser.add_argument('--seed', type=int, default=7)
+    parser.add_argument('--augmentation', action='store_true')
+    parser.add_argument('--label_smoothing', type=float, default=0.0)
+    return parser
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
 
-flags.DEFINE_integer('max_iter', 100, 'Number of steps/epochs to run training.')
-flags.DEFINE_integer('batch_size', 500, 'Number of examples to use in a batch for stochastic gradient descent.')
-flags.DEFINE_string('data_folder', 'data/numpy_bitmap/', 'Directory which has training data to use. Must have / at end.')
-flags.DEFINE_string('results_folder', 'results/', 'Folder to store result outputs from run.')
-flags.DEFINE_string('experiment_name', None, 'Name for the experiment. Useful to tagging files')
-flags.DEFINE_integer('model_version', 1, 'The version of the model that we want to run. Useful to run different models to compare them')
-flags.DEFINE_boolean('using_binarization', False, 'If True, binarize the data before passing into cnn')
+FLAGS = create_parser().parse_args([])
 
 
 model_filename = 'simple_cnn_keras_model'
@@ -65,9 +69,11 @@ def get_class_filename():
 def get_confusion_matrix_name():
     return "{}{}".format(confusion_file_name, get_suffix_name())
 
-def get_confusion_matrix_filename():
+def get_confusion_matrix_filename(split=None):
     suffix_name = get_suffix_name()
     filename  = "{}{}".format(confusion_file_name, suffix_name)
+    if split:
+        filename += "_" + split
     return os.path.join(FLAGS.results_folder, filename)
 
 def get_model_filename():
@@ -77,36 +83,31 @@ def get_model_filename():
 
 def get_tensorboard_directory():
     tensorboard_root_folder = os.path.join(FLAGS.results_folder, "tensorboard/")
-    if not os.path.exists(tensorboard_root_folder):
-        os.mkdir(tensorboard_root_folder)
+    os.makedirs(tensorboard_root_folder, exist_ok=True)
 
     suffix_name = get_suffix_name()
     filename = "{}{}".format(model_filename, suffix_name)
     dirpath = os.path.join(tensorboard_root_folder, filename) + "/"
 
-    if not os.path.exists(dirpath):
-        os.mkdir(dirpath)
+    os.makedirs(dirpath, exist_ok=True)
 
     now = datetime.datetime.now()
     now_timestring = now.strftime("%Y%m%d_%H%M%S")
 
     timestamped_dirpath = os.path.join(dirpath, now_timestring)
-    if not os.path.exists(timestamped_dirpath):
-        os.mkdir(timestamped_dirpath)
+    os.makedirs(timestamped_dirpath, exist_ok=True)
 
     return timestamped_dirpath
 
 def get_training_plots_directory():
     root_folder = os.path.join(FLAGS.results_folder, "training_plots/")
-    if not os.path.exists(root_folder):
-        os.mkdir(root_folder)
+    os.makedirs(root_folder, exist_ok=True)
 
     suffix_name = get_suffix_name()
     filename = "{}{}".format(model_filename, suffix_name)
     dirpath = os.path.join(root_folder, filename) + "/"
 
-    if not os.path.exists(dirpath):
-        os.mkdir(dirpath)
+    os.makedirs(dirpath, exist_ok=True)
     return dirpath
 
 def get_model_name_only():
@@ -119,7 +120,7 @@ def get_training_plot_filename():
     return os.path.join(directory, "{}_training_plot".format(get_model_name_only()))
 
 def get_tensorboard_callback(frequency=2):
-    logdir = "./" + get_tensorboard_directory()
+    logdir = get_tensorboard_directory()
     print("Tensorboard logdir: ", logdir)
     return keras.callbacks.TensorBoard(log_dir=logdir, histogram_freq=frequency,
     write_graph=True, write_images=True)
@@ -127,7 +128,7 @@ def get_tensorboard_callback(frequency=2):
 def get_model_weights_filename():
     suffix_name = get_suffix_name()
     filename  = "{}{}".format(model_weights_filename, suffix_name)
-    return os.path.join(FLAGS.results_folder, filename)
+    return os.path.join(FLAGS.results_folder, filename + ".weights.h5")
 
 
 def get_experiment_report_filename():
@@ -136,14 +137,25 @@ def get_experiment_report_filename():
     return os.path.join(FLAGS.results_folder, filename)
 
 
+def compile_classifier(classifier):
+    classifier.compile(
+        optimizer='adam',
+        loss=keras.losses.CategoricalCrossentropy(
+            label_smoothing=FLAGS.label_smoothing
+        ),
+        metrics=['accuracy', keras.metrics.TopKCategoricalAccuracy(
+            k=3, name='top_3_accuracy'
+        )]
+    )
+    return classifier
+
+
 def encode_values(encoder, Y, forConfusionMatrix=False):
-    # Use train y to encode
-    encoder.fit(Y)
     encoded_Y = encoder.transform(Y)
     # convert integers to dummy variables (i.e. one hot encoded)
     if not forConfusionMatrix:
         # Want 1-hot for training
-        dummy_y = np_utils.to_categorical(encoded_Y)
+        dummy_y = to_categorical(encoded_Y)
         return dummy_y
     else:
         # Want the class labels (numbers) for confusion.
@@ -174,8 +186,7 @@ def model():
     classifier.add(Dense(units=128, activation='relu'))
     classifier.add(Dense(get_num_classes(), activation='softmax'))
     # Compiling the CNN
-    classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    return classifier
+    return compile_classifier(classifier)
 
 def model_v2():
     # model_v2() only has 1 conv layer compared to 2 conv layers in model()
@@ -197,8 +208,7 @@ def model_v2():
     classifier.add(Dense(units=128, activation='relu'))
     classifier.add(Dense(get_num_classes(), activation='softmax'))
     # Compiling the CNN
-    classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    return classifier    
+    return compile_classifier(classifier)
 
 def model_v3():
     # model_v3() only has 1 conv layer compared to 2 conv layers in model() and removed max pool
@@ -215,8 +225,7 @@ def model_v3():
     classifier.add(Dense(units=128, activation='relu'))
     classifier.add(Dense(get_num_classes(), activation='softmax'))
     # Compiling the CNN
-    classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    return classifier    
+    return compile_classifier(classifier)
 
 def model_v4():
     # model_v2() only has 1 conv layer compared to 2 conv layers in model()
@@ -238,8 +247,7 @@ def model_v4():
     classifier.add(Dense(units=256, activation='relu'))
     classifier.add(Dense(get_num_classes(), activation='softmax'))
     # Compiling the CNN
-    classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    return classifier 
+    return compile_classifier(classifier)
 
 def model_v5():
     # Like model_v4() but onyl has 64 units in the last layer
@@ -261,8 +269,26 @@ def model_v5():
     classifier.add(Dense(units=64, activation='relu'))
     classifier.add(Dense(get_num_classes(), activation='softmax'))
     # Compiling the CNN
-    classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    return classifier 
+    return compile_classifier(classifier)
+
+
+def model_v6():
+    """Three convolutional blocks with normalization and global pooling."""
+    inputs = Input(shape=(28, 28, 1))
+    x = inputs
+    if FLAGS.augmentation:
+        x = RandomTranslation(0.08, 0.08)(x)
+        x = RandomZoom(0.1)(x)
+        x = RandomRotation(0.05)(x)
+    for filters in (32, 64, 128):
+        x = Conv2D(filters, (3, 3), padding='same', use_bias=False)(x)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
+        x = MaxPooling2D(pool_size=(2, 2))(x)
+    x = GlobalAveragePooling2D()(x)
+    x = Dropout(0.3)(x)
+    outputs = Dense(get_num_classes(), activation='softmax')(x)
+    return compile_classifier(keras.Model(inputs, outputs, name='quickdraw_cnn_v6'))
 
 def get_onehot_vector(index, num_classes):
     result = np.zeros(num_classes)
@@ -278,12 +304,16 @@ def convert_predictions_to_onehot(predictions, num_classes):
 
 
 def main():
+    global FLAGS
+    FLAGS = create_parser().parse_args()
+    os.makedirs(FLAGS.results_folder, exist_ok=True)
     print("folder = ", FLAGS.data_folder)
     t0 = time.time()
     # fix random seed for reproducibility
-    seed = 7
+    seed = FLAGS.seed
     np.random.seed(seed)
     random.seed(seed)
+    tf.random.set_seed(seed)
 
 
 
@@ -311,6 +341,7 @@ def main():
     # encode class values as integers
     encoder = LabelEncoder()
     # dummy_y will be one-hot encoding of classes
+    encoder.fit(Y)
     dummy_y = encode_values(encoder, Y)
     dummy_y_dev = encode_values(encoder, Y_dev)
     dummy_y_test = encode_values(encoder, Y_test)
@@ -322,23 +353,34 @@ def main():
     print ("Done preprocessing dataset")
 
     # build the model
-    tensorboard = TensorBoard()
-
-    
     # add flags to switch model
-    if FLAGS.model_version == 2:
-        cnn_model = model_v2()
-    if FLAGS.model_version == 3:
-        cnn_model = model_v3()
-    if FLAGS.model_version == 4:
-        cnn_model = model_v4()
-    if FLAGS.model_version == 5:
-        cnn_model = model_v5()
-    else:
+    if FLAGS.model_version == 1:
         cnn_model = model()
+    elif FLAGS.model_version == 2:
+        cnn_model = model_v2()
+    elif FLAGS.model_version == 3:
+        cnn_model = model_v3()
+    elif FLAGS.model_version == 4:
+        cnn_model = model_v4()
+    elif FLAGS.model_version == 5:
+        cnn_model = model_v5()
+    elif FLAGS.model_version == 6:
+        cnn_model = model_v6()
+    else:
+        raise ValueError("Unknown model_version {}; expected one of 1, 2, 3, 4, 5, or 6".format(
+            FLAGS.model_version))
 
     plot_losses = TrainingPlot(get_training_plot_filename())
-    cnn_model.fit(X, dummy_y, epochs=FLAGS.max_iter, batch_size=FLAGS.batch_size, verbose=1, callbacks=[get_tensorboard_callback(), plot_losses], validation_data=(X_dev, dummy_y_dev))
+    callbacks = [
+        get_tensorboard_callback(), plot_losses,
+        EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True),
+        ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2)
+    ]
+    history = cnn_model.fit(
+        X, dummy_y, epochs=FLAGS.max_iter, batch_size=FLAGS.batch_size,
+        verbose=1, callbacks=callbacks,
+        validation_data=(X_dev, dummy_y_dev)
+    )
 
     t1 = time.time()
     training_duration_secs = t1 - t0
@@ -346,6 +388,10 @@ def main():
     experiment_result_string += "\nTraining time(secs): {}".format(training_duration_secs)
     experiment_result_string += "\nMax training iterations: {}".format(FLAGS.max_iter)
     experiment_result_string += "\nTraining time / Max training iterations: {}".format( 1.0 * training_duration_secs / FLAGS.max_iter)
+    experiment_result_string += "\nFinal train/dev accuracy gap: {:.6f}".format(
+        history.history["accuracy"][-1] -
+        history.history["val_accuracy"][-1]
+    )
 
     dummy_y_pred_dev = cnn_model.predict(X_dev)
     dummy_y_pred_test = cnn_model.predict(X_test)
@@ -353,7 +399,7 @@ def main():
 
     # Need to take argmax to find most likely class.
     dummy_y_pred_dev_class = dummy_y_pred_dev.argmax(axis=-1)
-    dummy_y_pred_test_class = dummy_y_pred_dev.argmax(axis=-1)
+    dummy_y_pred_test_class = dummy_y_pred_test.argmax(axis=-1)
 
 
     # evaluate the model
@@ -390,15 +436,20 @@ def main():
 
 
     print("Dummy y pred dev class", dummy_y_pred_dev_class[0])
-    conf_matrix = confusion_matrix(dummy_y_dev_confusion_matrix, dummy_y_pred_dev_class)
-    print ("Confusion matrix", conf_matrix)
+    dev_conf_matrix = confusion_matrix(dummy_y_dev_confusion_matrix, dummy_y_pred_dev_class)
+    test_conf_matrix = confusion_matrix(dummy_y_test_confusion_matrix, dummy_y_pred_test_class)
+    print ("Dev confusion matrix", dev_conf_matrix)
+    print ("Test confusion matrix", test_conf_matrix)
     pickle.dump(class_names, open(get_class_filename(), 'wb'))
-    pickle.dump(conf_matrix, open(get_confusion_matrix_filename(), 'wb'))
+    pickle.dump(dev_conf_matrix, open(get_confusion_matrix_filename("dev"), 'wb'))
+    pickle.dump(test_conf_matrix, open(get_confusion_matrix_filename("test"), 'wb'))
 
 def generate_confusion_matrix():
     class_names = pickle.load(open(get_class_filename(), 'rb'))[:10]
-    confusion = pickle.load(open(get_confusion_matrix_filename(), 'rb'))[:10,:10]
-    utils.create_confusion_matrices(class_names, confusion, get_confusion_matrix_name())
+    for split in ("dev", "test"):
+        confusion = pickle.load(open(get_confusion_matrix_filename(split), 'rb'))[:10,:10]
+        utils.create_confusion_matrices(
+            class_names, confusion, get_confusion_matrix_name() + "_" + split)
 
 if __name__ == '__main__':
     main()

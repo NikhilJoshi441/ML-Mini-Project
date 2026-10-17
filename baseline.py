@@ -2,11 +2,10 @@ import numpy as np
 import pandas
 import time
 
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.wrappers.scikit_learn import KerasClassifier
-from keras.utils import np_utils
-from keras.callbacks import TensorBoard
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.utils import to_categorical
 
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import KFold
@@ -25,7 +24,7 @@ def encode_values(encoder, Y):
     encoder.fit(Y)
     encoded_Y = encoder.transform(Y)
     # convert integers to dummy variables (i.e. one hot encoded)
-    dummy_y = np_utils.to_categorical(encoded_Y)
+    dummy_y = to_categorical(encoded_Y)
     return dummy_y
     # return encoded_Y
 
@@ -70,10 +69,10 @@ def main():
 
     # build the model
     tensorboard = TensorBoard()
-    estimator = KerasClassifier(build_fn=baseline_model, epochs=10, batch_size=500, verbose=1)
+    estimator = baseline_model()
     print ('Y passing into model: ', dummy_y)
-    estimator.fit(X, dummy_y)
-    dummy_y_pred_dev = estimator.predict(X_dev)
+    estimator.fit(X, dummy_y, epochs=10, batch_size=500, verbose=1)
+    dummy_y_pred_dev = np.argmax(estimator.predict(X_dev, verbose=0), axis=-1)
 
     print ("Dummy y predict (should be one long vector of number): {}".format(dummy_y_pred_dev))
 

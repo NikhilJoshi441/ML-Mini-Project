@@ -1,4 +1,6 @@
 import time
+import argparse
+import os
 import itertools
 import numpy as np
 import pickle
@@ -8,15 +10,16 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import classification_report
 
-import tensorflow as tf
+def create_parser():
+    parser = argparse.ArgumentParser(description='Train the logistic-regression baseline.')
+    parser.add_argument('--max_iter', type=int, default=100)
+    parser.add_argument('--data_folder', default='data/numpy_bitmap/')
+    parser.add_argument('--results_folder', default='results/')
+    parser.add_argument('--experiment_name')
+    return parser
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
 
-flags.DEFINE_integer('max_iter', 100, 'Number of steps to run trainer.')
-flags.DEFINE_string('data_folder', 'data/numpy_bitmap/', 'Directory which has training data to use. Must have / at end.')
-flags.DEFINE_string('results_folder', 'results/', 'Folder to store result outputs from run.')
-flags.DEFINE_string('experiment_name', None, 'Name for the experiment. Useful to tagging files')
+FLAGS = create_parser().parse_args([])
 
 import massageData
 import utils
@@ -94,6 +97,12 @@ def main():
     confusion = pickle.load(open(get_confusion_matrix_filename(), 'rb'))[:10,:10]
     utils.create_confusion_matrices(class_names, confusion, get_confusion_matrix_name())
 
-if __name__ == '__main__':
+def main():
+    global FLAGS
+    FLAGS = create_parser().parse_args()
+    os.makedirs(FLAGS.results_folder, exist_ok=True)
     run()
+
+if __name__ == '__main__':
+    main()
     #main()

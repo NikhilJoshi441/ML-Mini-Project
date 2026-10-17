@@ -6,11 +6,10 @@ from sklearn.model_selection import train_test_split
 
 class massageData():
         def binarize(self, x):
-                """ Set all pixel with value > 0 to be 255. 
+                """Set all nonzero pixels to 1 and background pixels to 0.
                 This means we only differentiate between 'have ink' and
                 'does not have ink'"""
-                x[x>0] = 255
-                return x
+                return (x > 0).astype(np.float32)
 
         def getData(self):
                 """ Returns the full dataset. This is 100% of the loaded data. """
@@ -79,6 +78,8 @@ class massageData():
                         if binarize:
                                 print('USING BINARIZED DATA')
                                 x = self.binarize(x)
+                        else:
+                                x = x.astype(np.float32) / 255.0
 
                         y = [name] * x.shape[0]
                         # Full dataset.

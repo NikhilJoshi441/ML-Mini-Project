@@ -20,7 +20,54 @@
 
 
 ## Introduction
-Goal is to train a classifier that can recognize / classify handwritten digits. 
+This project trains classifiers for Google Quick Draw doodles represented as 28x28 bitmap arrays.
+It is not a handwritten-digit classifier.
+
+The project builds on the original Stanford CS229 project by Connie, Minh and Jervis.
+
+## Modern usage
+
+Install the pinned Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Train the CNN (model v6 enables the Phase 3 improvements):
+
+```bash
+python cnn.py --data_folder data/numpy_bitmap_3/ --model_version 6 \
+  --augmentation --seed 7 --max_iter 20
+```
+
+Train a transfer-learning model:
+
+```bash
+python transfer_learning.py --data_folder data/numpy_bitmap_3/ \
+  --transfer_model EfficientNetB0 --input_size 128 --seed 7
+```
+
+Run the reproducible Phase 4 comparison across CNN v1 and v6:
+
+```bash
+python experiment_runner.py --data_folder data/numpy_bitmap_3/ \
+  --seeds 7 17 27 --epochs 20 --output results.csv
+```
+
+Add `--include_transfer` to include all configured transfer-learning backbones.
+The runner uses the same per-class train/dev/test split for every model and writes
+mean and standard deviation columns to `results.csv`.
+
+## Results
+
+The comparison table is intentionally left as a placeholder until experiments are
+run on the target dataset:
+
+| Model | Dev top-1 mean +/- std | Dev top-3 mean +/- std | Test top-1 mean +/- std | Test top-3 mean +/- std | Training time | Parameters |
+|---|---|---|---|---|---|---|
+| CNN v1 | TBD | TBD | TBD | TBD | TBD | TBD |
+| CNN v6 | TBD | TBD | TBD | TBD | TBD | TBD |
+| Transfer backbones | TBD | TBD | TBD | TBD | TBD | TBD |
 
 Dataset to use is the Google Quick Draw dataset.
 

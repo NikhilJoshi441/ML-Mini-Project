@@ -1,9 +1,8 @@
 import numpy
 import pandas
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.wrappers.scikit_learn import KerasClassifier
-from keras.utils import np_utils
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import LabelEncoder
@@ -46,19 +45,23 @@ def main():
     encoder.fit(Y)
     encoded_Y = encoder.transform(Y)
     # convert integers to dummy variables (i.e. one hot encoded)
-    dummy_y = np_utils.to_categorical(encoded_Y)
+    dummy_y = to_categorical(encoded_Y)
 
     print ("Done preprocessing dataset")
 
     # build the model
-    estimator = KerasClassifier(build_fn=baseline_model, epochs=200, batch_size=5, verbose=0)
-
     print ("Done building estimator")
 
     kfold = KFold(n_splits=2, shuffle=True, random_state=seed)
-
-    results = cross_val_score(estimator, X, dummy_y, cv=kfold)
-    print("Baseline: %.2f%% (%.2f%%)" % (results.mean()*100, results.std()*100))
+    results = []
+    for train_indices, test_indices in kfold.split(X):
+        estimator = baseline_model()
+        estimator.fit(X[train_indices], dummy_y[train_indices],
+                      epochs=200, batch_size=5, verbose=0)
+        predictions = numpy.argmax(estimator.predict(X[test_indices], verbose=0), axis=-1)
+        labels = numpy.argmax(dummy_y[test_indices], axis=-1)
+        results.append(numpy.mean(predictions == labels))
+    print("Baseline: %.2f%% (%.2f%%)" % (numpy.mean(results) * 100, numpy.std(results) * 100))
 
 if __name__ == '__main__':
     main()

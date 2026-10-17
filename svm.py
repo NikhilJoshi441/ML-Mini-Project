@@ -3,20 +3,23 @@ from sklearn import svm
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import MinMaxScaler
 import pickle
+import argparse
+import os
 
 import massageData
 import utils
 
 
-import tensorflow as tf
+def create_parser():
+    parser = argparse.ArgumentParser(description='Train SVM baselines.')
+    parser.add_argument('--max_iter', type=int, default=100)
+    parser.add_argument('--data_folder', default='data/numpy_bitmap/')
+    parser.add_argument('--results_folder', default='results/')
+    parser.add_argument('--experiment_name')
+    return parser
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
 
-flags.DEFINE_integer('max_iter', 100, 'Number of steps to run trainer.')
-flags.DEFINE_string('data_folder', 'data/numpy_bitmap/', 'Directory which has training data to use. Must have / at end.')
-flags.DEFINE_string('results_folder', 'results/', 'Folder to store result outputs from run.')
-flags.DEFINE_string('experiment_name', None, 'Name for the experiment. Useful to tagging files')
+FLAGS = create_parser().parse_args([])
 
 class_file_name = 'class_names_baselinev2_lr'
 confusion_file_name = 'confusion_matrix_baselinev2_lr'
@@ -79,6 +82,8 @@ def kernel_svm(**args):
     utils.create_confusion_matrices(class_names, confusion, file_name)
 
 def main():
+    global FLAGS
+    FLAGS = create_parser().parse_args()
     kernel_svm(kernel='linear', verbose=1, max_iter=500)
     kernel_svm(kernel='poly', degree=5, coef0=1, verbose=1, max_iter=500)
     kernel_svm(kernel='rbf', gamma=1, verbose=1, max_iter=500)

@@ -4,19 +4,14 @@ import time
 import random
 import os
 
-import scipy
-
+import argparse
 import pickle
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.wrappers.scikit_learn import KerasClassifier
-from keras.utils import np_utils
-from keras.callbacks import TensorBoard
-from keras.models import Sequential
-from keras.layers import Conv2D
-from keras.layers import MaxPooling2D
-from keras.layers import Flatten
-from keras.layers import Dense
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, GlobalAveragePooling2D
+from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.utils import to_categorical
 from training_plot import TrainingPlot
 
 from sklearn.model_selection import cross_val_score
@@ -28,33 +23,35 @@ import massageData
 import utils
 from sklearn.metrics import confusion_matrix
 
-import tensorflow as tf
-
 #TODO: consider scaling image to 299x299.
 
-from keras.applications.inception_v3 import InceptionV3
-from keras.applications.mobilenet import MobileNet
-from keras.applications.resnet50 import ResNet50
-from keras.applications.vgg19 import VGG19
-
-from keras.preprocessing import image
-from keras.models import Model
-from keras.layers import Dense, GlobalAveragePooling2D
-from keras import backend as K
+from tensorflow.keras.applications.inception_v3 import InceptionV3
+from tensorflow.keras.applications.mobilenet import MobileNet
+from tensorflow.keras.applications.resnet50 import ResNet50
+from tensorflow.keras.applications.vgg19 import VGG19
+from tensorflow.keras.applications.efficientnet import EfficientNetB0
 
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
+def create_parser():
+    parser = argparse.ArgumentParser(description='Train a transfer-learning model.')
+    parser.add_argument('--max_iter', type=int, default=100)
+    parser.add_argument('--batch_size', type=int, default=500)
+    parser.add_argument('--data_folder', default='data/numpy_bitmap_3/')
+    parser.add_argument('--results_folder', default='results/')
+    parser.add_argument('--experiment_name')
+    parser.add_argument('--model_version', type=int, default=1)
+    parser.add_argument('--using_binarization', action='store_true')
+    parser.add_argument('--transfer_model', default='InceptionV3',
+                        choices=['MobileNet', 'InceptionV3', 'ResNet50', 'VGG19', 'EfficientNetB0'])
+    parser.add_argument('--tune_source_model', action='store_true')
+    parser.add_argument('--fine_tune_layers', type=int, default=20)
+    parser.add_argument('--input_size', type=int, default=128)
+    parser.add_argument('--seed', type=int, default=7)
+    parser.add_argument('--label_smoothing', type=float, default=0.0)
+    return parser
 
-flags.DEFINE_integer('max_iter', 100, 'Number of steps/epochs to run training.')
-flags.DEFINE_integer('batch_size', 500, 'Number of examples to use in a batch for stochastic gradient descent.')
-flags.DEFINE_string('data_folder', 'data/numpy_bitmap_3/', 'Directory which has training data to use. Must have / at end.')
-flags.DEFINE_string('results_folder', 'results/', 'Folder to store result outputs from run.')
-flags.DEFINE_string('experiment_name', None, 'Name for the experiment. Useful to tagging files')
-flags.DEFINE_integer('model_version', 1, 'The version of the model that we want to run. Useful to run different models to compare them')
-flags.DEFINE_boolean('using_binarization', False, 'If True, binarize the data before passing into cnn')
-flags.DEFINE_string('transfer_model', 'InceptionV3', 'Model use for transfer learning')
-flags.DEFINE_boolean('tune_source_model', False, 'If True, tune the weights of the original model as well')
+
+FLAGS = create_parser().parse_args([])
 
 
 model_filename = 'transfer_learning_model'
@@ -62,7 +59,7 @@ model_weights_filename = 'transfer_learning_model_weights'
 class_file_name = 'class_names_transfer_learning'
 confusion_file_name = 'confusion_matrix_transfer_learning'
 
-available_models = ['MobileNet', 'InceptionV3', 'ResNet50', 'VGG19']
+available_models = ['MobileNet', 'InceptionV3', 'ResNet50', 'VGG19', 'EfficientNetB0']
 
 def get_data_folder():
     return FLAGS.data_folder
@@ -81,9 +78,11 @@ def get_class_filename():
 def get_confusion_matrix_name():
     return "{}{}".format(confusion_file_name, get_suffix_name())
 
-def get_confusion_matrix_filename():
+def get_confusion_matrix_filename(split=None):
     suffix_name = get_suffix_name()
     filename  = "{}{}".format(confusion_file_name, suffix_name)
+    if split:
+        filename += "_" + split
     return os.path.join(FLAGS.results_folder, filename)
 
 def get_model_filename():
@@ -104,15 +103,13 @@ def get_experiment_report_filename():
 
 def get_training_plots_directory():
     root_folder = os.path.join(FLAGS.results_folder, "training_plots/")
-    if not os.path.exists(root_folder):
-        os.mkdir(root_folder)
+    os.makedirs(root_folder, exist_ok=True)
 
     suffix_name = get_suffix_name()
     filename = "{}{}".format(model_filename, suffix_name)
     dirpath = os.path.join(root_folder, filename) + "/"
 
-    if not os.path.exists(dirpath):
-        os.mkdir(dirpath)
+    os.makedirs(dirpath, exist_ok=True)
     return dirpath
 
 def get_model_name_only():
@@ -125,14 +122,26 @@ def get_training_plot_filename():
     return os.path.join(directory, "{}_training_plot".format(get_model_name_only()))
 
 
+def compile_transfer_model(model, learning_rate=0.001):
+    from tensorflow.keras.optimizers import Adam
+    model.compile(
+        optimizer=Adam(learning_rate=learning_rate, clipnorm=1),
+        loss=keras.losses.CategoricalCrossentropy(
+            label_smoothing=FLAGS.label_smoothing
+        ),
+        metrics=['accuracy', keras.metrics.TopKCategoricalAccuracy(
+            k=3, name='top_3_accuracy'
+        )]
+    )
+    return model
+
+
 def encode_values(encoder, Y, forConfusionMatrix=False):
-    # Use train y to encode
-    encoder.fit(Y)
     encoded_Y = encoder.transform(Y)
     # convert integers to dummy variables (i.e. one hot encoded)
     if not forConfusionMatrix:
         # Want 1-hot for training
-        dummy_y = np_utils.to_categorical(encoded_Y)
+        dummy_y = to_categorical(encoded_Y)
         return dummy_y
     else:
         # Want the class labels (numbers) for confusion.
@@ -166,11 +175,11 @@ def model():
     classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     return classifier
 
-def transfer_learning(X, y, X_dev, y_dev, source_model=InceptionV3(weights='imagenet', include_top=False), tune_source_model=True):
+def transfer_learning(X, y, X_dev, y_dev, source_model=None, tune_source_model=True):
     # Based on code snippets from:https://keras.io/applications/
     print("Building transfer learning model...")
     # create the base pre-trained model
-    base_model = source_model
+    base_model = source_model or InceptionV3(weights='imagenet', include_top=False)
 
     # add a global spatial average pooling layer
     x = base_model.output
@@ -191,42 +200,53 @@ def transfer_learning(X, y, X_dev, y_dev, source_model=InceptionV3(weights='imag
         layer.trainable = False
 
     # compile the model (should be done *after* setting layers to non-trainable)
-    from keras.optimizers import Adam
-    model.compile(optimizer=Adam(clipnorm=1), loss='categorical_crossentropy', metrics=['accuracy'])
+    compile_transfer_model(model)
 
     # train the model on the new data for a few epochs
     print("Tuning our last custom layer...")
     plot_losses = TrainingPlot(get_training_plot_filename() + "_tune_our_last_layer")
-    model.fit(X, y, epochs=FLAGS.max_iter, batch_size=FLAGS.batch_size, verbose=1, validation_data=(X_dev, y_dev), callbacks=[plot_losses])
-
-    # at this point, the top layers are well trained and we can start fine-tuning
-    # convolutional layers from inception V3. We will freeze the bottom N layers
-    # and train the remaining top layers.
-
-    # let's visualize layer names and layer indices to see how many layers
-    # we should freeze:
-    for i, layer in enumerate(base_model.layers):
-        print(i, layer.name)
+    callbacks = [
+        plot_losses,
+        EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True),
+        ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2)
+    ]
+    head_history = model.fit(
+        X, y, epochs=FLAGS.max_iter, batch_size=FLAGS.batch_size,
+        verbose=1, validation_data=(X_dev, y_dev), callbacks=callbacks
+    )
 
     if not tune_source_model:
         return model
-    # we chose to train the top 2 inception blocks, i.e. we will freeze
-    # the first 249 layers and unfreeze the rest:
-    for layer in model.layers[:249]:
+
+    # Unfreeze only the configurable tail of the selected source model. Batch
+    # normalization statistics remain frozen during fine-tuning.
+    for layer in base_model.layers:
         layer.trainable = False
-    for layer in model.layers[249:]:
-        layer.trainable = True
+    layers_to_unfreeze = max(0, min(FLAGS.fine_tune_layers, len(base_model.layers)))
+    for layer in base_model.layers[-layers_to_unfreeze:] if layers_to_unfreeze else []:
+        layer.trainable = not isinstance(layer, keras.layers.BatchNormalization)
 
     # we need to recompile the model for these modifications to take effect
     # we use SGD with a low learning rate
-    from keras.optimizers import SGD
-    model.compile(optimizer=SGD(lr=0.0001, momentum=0.9, clipnorm=1), loss='categorical_crossentropy', metrics=['accuracy'])
+    from tensorflow.keras.optimizers import SGD
+    model.compile(
+        optimizer=SGD(learning_rate=0.0001, momentum=0.9, clipnorm=1),
+        loss=keras.losses.CategoricalCrossentropy(
+            label_smoothing=FLAGS.label_smoothing
+        ),
+        metrics=['accuracy', keras.metrics.TopKCategoricalAccuracy(
+            k=3, name='top_3_accuracy'
+        )]
+    )
 
     # we train our model again (this time fine-tuning the top 2 inception blocks
     # alongside the top Dense layers
     print("Tuning the last 2 inceptions layers ...")
     plot_losses = TrainingPlot( get_training_plot_filename() + "_tune_transfer_model_last_layer")
-    model.fit(X, y, epochs=FLAGS.max_iter, batch_size=FLAGS.batch_size, verbose=1,  validation_data=(X_dev, y_dev), callbacks=[plot_losses])
+    fine_tune_history = model.fit(
+        X, y, epochs=FLAGS.max_iter, batch_size=FLAGS.batch_size,
+        verbose=1, validation_data=(X_dev, y_dev), callbacks=callbacks
+    )
     return  model
 
 def get_onehot_vector(index, num_classes):
@@ -241,7 +261,7 @@ def convert_predictions_to_onehot(predictions, num_classes):
         result[i] = get_onehot_vector(predictions[i], num_classes)
     return result
 
-def convertTo3Channels(x, new_image_size=(299, 299)):
+def convertTo3Channels(x, new_image_size=(128, 128), preprocess_input=None):
         print ('Convert data to shape: {}'.format(new_image_size))
         # x has shape (m. size, size, # channels)
         num_examples, size_x, size_y, _ = x.shape
@@ -250,9 +270,13 @@ def convertTo3Channels(x, new_image_size=(299, 299)):
         # TODO: Try red color drawings...
         for i in range(num_examples):
             source_image = x[i, :, :, 0]
-            scaled_image = scipy.misc.imresize(source_image, new_image_size)
+            scaled_image = tf.image.resize(
+                source_image[..., np.newaxis], new_image_size
+            ).numpy()[..., 0]
             for j in range(num_channels):
                 result[i, :, :, j] = scaled_image
+        if preprocess_input is not None:
+            result = np.asarray(preprocess_input(result * 255.0))
         return result
 
 # for inline mutate x instead of 
@@ -265,36 +289,53 @@ def assertXIsNotNan(X):
 def get_source_model(source_model_name):
     print ('Using base model: {}'.format(source_model_name))
 
+    input_size = (FLAGS.input_size, FLAGS.input_size)
     if source_model_name == 'MobileNet':
-        new_image_size = (224, 224)
-        source_model = MobileNet(input_shape=(224, 224, 3), weights='imagenet', include_top=False)
+        new_image_size = input_size
+        source_model = MobileNet(input_shape=(*input_size, 3), weights='imagenet', include_top=False)
+        preprocess_input = keras.applications.mobilenet.preprocess_input
     elif source_model_name == 'InceptionV3':
-        new_image_size = (299, 299)
-        source_model = InceptionV3(weights='imagenet', include_top=False)
+        new_image_size = input_size
+        source_model = InceptionV3(input_shape=(*input_size, 3), weights='imagenet', include_top=False)
+        preprocess_input = keras.applications.inception_v3.preprocess_input
     elif source_model_name == 'ResNet50':
-        new_image_size = (224, 224)
-        source_model = ResNet50(weights='imagenet', include_top=False)
+        new_image_size = input_size
+        source_model = ResNet50(input_shape=(*input_size, 3), weights='imagenet', include_top=False)
+        preprocess_input = keras.applications.resnet50.preprocess_input
     elif source_model_name == 'VGG19':
-        new_image_size = (224, 224)
-        source_model = VGG19(weights='imagenet', include_top=False)
+        new_image_size = input_size
+        source_model = VGG19(input_shape=(*input_size, 3), weights='imagenet', include_top=False)
+        preprocess_input = keras.applications.vgg19.preprocess_input
+    elif source_model_name == 'EfficientNetB0':
+        new_image_size = input_size
+        source_model = EfficientNetB0(
+            input_shape=(*input_size, 3), weights='imagenet', include_top=False
+        )
+        preprocess_input = keras.applications.efficientnet.preprocess_input
     else:
-        raise AssertionError("Please use one of the available models only. They are 'MobileNet', 'InceptionV3', 'ResNet50', 'VGG19'")
+        raise AssertionError("Please use one of the available models only: {}".format(
+            ", ".join(available_models)
+        ))
 
-    return new_image_size, source_model
+    return new_image_size, source_model, preprocess_input
 
 def main():
+    global FLAGS
+    FLAGS = create_parser().parse_args()
+    os.makedirs(FLAGS.results_folder, exist_ok=True)
     # Check if correct model flag is used. Warn the user early if not.
     if FLAGS.transfer_model not in available_models:
-        print ("Please rerun with one of the models: 'MobileNet', 'InceptionV3', 'ResNet50'")
+        print ("Please rerun with one of the models: {}".format(", ".join(available_models)))
         return
 
 
     print("folder = ", FLAGS.data_folder)
     t0 = time.time()
     # fix random seed for reproducibility
-    seed = 7
+    seed = FLAGS.seed
     np.random.seed(seed)
     random.seed(seed)
+    tf.random.set_seed(seed)
 
     # load dataset
     # TODO: make this configurable.
@@ -313,7 +354,7 @@ def main():
     X_dev = X_dev.reshape((-1, 28, 28, 1))
     print("X dev shape after: ", X_dev.shape)
 
-    X_test = X_dev.reshape((-1, 28, 28, 1))
+    X_test = X_test.reshape((-1, 28, 28, 1))
 
     print("Converting to 3 channnels...")
     
@@ -322,6 +363,7 @@ def main():
     # do some more preprocessing    # encode class values as integers
     encoder = LabelEncoder()
     # dummy_y will be one-hot encoding of classes
+    encoder.fit(Y)
     dummy_y = encode_values(encoder, Y)
     dummy_y_dev = encode_values(encoder, Y_dev)
     dummy_y_test = encode_values(encoder, Y_test)
@@ -333,12 +375,12 @@ def main():
     # build the model
     tensorboard = TensorBoard()
 
-    new_image_size, source_model = get_source_model(FLAGS.transfer_model)
+    new_image_size, source_model, preprocess_input = get_source_model(FLAGS.transfer_model)
 
     print("Converting input images for transfer learning...")
-    X_dev = convertTo3Channels(X_dev, new_image_size)
-    X_test = convertTo3Channels(X_test, new_image_size)
-    X = convertTo3Channels(X, new_image_size)
+    X_dev = convertTo3Channels(X_dev, new_image_size, preprocess_input)
+    X_test = convertTo3Channels(X_test, new_image_size, preprocess_input)
+    X = convertTo3Channels(X, new_image_size, preprocess_input)
     print ("Done preprocessing dataset")
 
     model = transfer_learning(X, dummy_y, X_dev, dummy_y_dev, source_model, FLAGS.tune_source_model)
@@ -350,13 +392,22 @@ def main():
     experiment_result_string += "\nTraining time(secs): {}".format(training_duration_secs)
     experiment_result_string += "\nMax training iterations: {}".format(FLAGS.max_iter)
     experiment_result_string += "\nTraining time / Max training iterations: {}".format( 1.0 * training_duration_secs / FLAGS.max_iter)
+    experiment_result_string += "\nFinal head train/dev accuracy gap: {:.6f}".format(
+        head_history.history["accuracy"][-1] -
+        head_history.history["val_accuracy"][-1]
+    )
+    if FLAGS.tune_source_model:
+        experiment_result_string += "\nFinal fine-tune train/dev accuracy gap: {:.6f}".format(
+            fine_tune_history.history["accuracy"][-1] -
+            fine_tune_history.history["val_accuracy"][-1]
+        )
 
     dummy_y_pred_dev = model.predict(X_dev)
     dummy_y_pred_test = model.predict(X_test)
 
     # Need to take argmax to find most likely class.
     dummy_y_pred_dev_class = dummy_y_pred_dev.argmax(axis=-1)
-    dummy_y_pred_test_class = dummy_y_pred_dev.argmax(axis=-1)
+    dummy_y_pred_test_class = dummy_y_pred_test.argmax(axis=-1)
 
 
     # evaluate the model
@@ -370,10 +421,20 @@ def main():
     print(experiment_result_string)
     utils.write_contents_to_file(get_experiment_report_filename(), experiment_result_string)
 
+    dev_conf_matrix = confusion_matrix(dummy_y_dev_confusion_matrix, dummy_y_pred_dev_class)
+    test_conf_matrix = confusion_matrix(dummy_y_test_confusion_matrix, dummy_y_pred_test_class)
+    print("Dev confusion matrix", dev_conf_matrix)
+    print("Test confusion matrix", test_conf_matrix)
+    pickle.dump(class_names, open(get_class_filename(), 'wb'))
+    pickle.dump(dev_conf_matrix, open(get_confusion_matrix_filename("dev"), 'wb'))
+    pickle.dump(test_conf_matrix, open(get_confusion_matrix_filename("test"), 'wb'))
+
 def generate_confusion_matrix():
     class_names = pickle.load(open(get_class_filename(), 'rb'))[:10]
-    confusion = pickle.load(open(get_confusion_matrix_filename(), 'rb'))[:10,:10]
-    utils.create_confusion_matrices(class_names, confusion, get_confusion_matrix_name())
+    for split in ("dev", "test"):
+        confusion = pickle.load(open(get_confusion_matrix_filename(split), 'rb'))[:10,:10]
+        utils.create_confusion_matrices(
+            class_names, confusion, get_confusion_matrix_name() + "_" + split)
 
 if __name__ == '__main__':
     main()

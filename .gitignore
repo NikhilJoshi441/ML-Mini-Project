@@ -39,3 +39,14 @@ data/
 logs/
 
 results/tensorboard/
+results/training_plots/
+results/*.json
+results/*.h5
+results/*.keras
+results/*.pkl
+results/*.pickle
+results/*confusion*
+results/*results*
+*.weights.h5
+*.log
+results.csv
