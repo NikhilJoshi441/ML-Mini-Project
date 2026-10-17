@@ -134,7 +134,7 @@ def run_transfer_one(seed, args, arrays, labels):
             for x in arrays
         ]
         start = time.time()
-        model = transfer_learning.transfer_learning(
+        model, _, _ = transfer_learning.transfer_learning(
             converted[0], labels[0], converted[1], labels[1],
             base, tune_source_model=False,
         )

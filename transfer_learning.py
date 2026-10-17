@@ -216,7 +216,7 @@ def transfer_learning(X, y, X_dev, y_dev, source_model=None, tune_source_model=T
     )
 
     if not tune_source_model:
-        return model
+        return model, head_history, None
 
     # Unfreeze only the configurable tail of the selected source model. Batch
     # normalization statistics remain frozen during fine-tuning.
@@ -247,7 +247,7 @@ def transfer_learning(X, y, X_dev, y_dev, source_model=None, tune_source_model=T
         X, y, epochs=FLAGS.max_iter, batch_size=FLAGS.batch_size,
         verbose=1, validation_data=(X_dev, y_dev), callbacks=callbacks
     )
-    return  model
+    return model, head_history, fine_tune_history
 
 def get_onehot_vector(index, num_classes):
     result = np.zeros(num_classes)
@@ -383,7 +383,9 @@ def main():
     X = convertTo3Channels(X, new_image_size, preprocess_input)
     print ("Done preprocessing dataset")
 
-    model = transfer_learning(X, dummy_y, X_dev, dummy_y_dev, source_model, FLAGS.tune_source_model)
+    model, head_history, fine_tune_history = transfer_learning(
+        X, dummy_y, X_dev, dummy_y_dev, source_model, FLAGS.tune_source_model
+    )
 
     t1 = time.time()
     training_duration_secs = t1 - t0
