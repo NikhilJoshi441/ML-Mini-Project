@@ -50,3 +50,9 @@ results/*results*
 *.weights.h5
 *.log
 results.csv
+
+# Large committed experiment artifacts
+cnn_model_weights_50.keras
+cnn_confusion_matrix_50class
+confusion_matrix_50class_baselinev2
+class_names_50class_baselinev2
