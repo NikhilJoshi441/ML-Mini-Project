@@ -206,14 +206,14 @@ def transfer_learning(train_dataset, dev_dataset, source_model=None,
     # train the model on the new data for a few epochs
     print("Tuning our last custom layer...")
     plot_losses = TrainingPlot(get_training_plot_filename() + "_tune_our_last_layer")
-    callbacks = [
+    head_callbacks = [
         plot_losses,
         EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True),
         ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2)
     ]
     head_history = model.fit(
         train_dataset, epochs=FLAGS.max_iter, verbose=1,
-        validation_data=dev_dataset, callbacks=callbacks
+        validation_data=dev_dataset, callbacks=head_callbacks
     )
 
     if not tune_source_model:
@@ -243,10 +243,17 @@ def transfer_learning(train_dataset, dev_dataset, source_model=None,
     # we train our model again (this time fine-tuning the top 2 inception blocks
     # alongside the top Dense layers
     print("Tuning the last 2 inceptions layers ...")
-    plot_losses = TrainingPlot( get_training_plot_filename() + "_tune_transfer_model_last_layer")
+    fine_tune_plot = TrainingPlot(
+        get_training_plot_filename() + "_tune_transfer_model_last_layer"
+    )
+    fine_tune_callbacks = [
+        fine_tune_plot,
+        EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True),
+        ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2)
+    ]
     fine_tune_history = model.fit(
         train_dataset, epochs=FLAGS.max_iter, verbose=1,
-        validation_data=dev_dataset, callbacks=callbacks
+        validation_data=dev_dataset, callbacks=fine_tune_callbacks
     )
     return model, head_history, fine_tune_history
 
