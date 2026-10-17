@@ -42,8 +42,16 @@ python experiment_runner.py --data_folder data/numpy_bitmap_3/ \
 ```
 
 Add `--include_transfer` to include all configured transfer-learning backbones.
-The runner uses the same per-class train/dev/test split for every model and writes
-mean and standard deviation columns to `results.csv`.
+The runner uses the same per-class train/dev/test split for every model within
+each seed, re-splitting for each seed, and writes mean and standard deviation
+columns to `results.csv` plus per-seed rows to `results_raw.csv`.
+
+For a small ten-class run:
+
+```bash
+python experiment_runner.py --data_folder data/numpy_bitmap_10/ \
+  --seeds 7 17 27 --epochs 20 --output results.csv
+```
 
 ## Results
 
@@ -60,7 +68,7 @@ run on the target dataset:
 
 - **v1:** original two-convolution baseline.
 - **v2-v4:** historical architecture variants retained for comparison.
-- **v5:** historical deeper baseline retained for comparison.
+- **v5:** fourteenth-filter convolutional baseline with a 64-unit dense layer.
 - **v6:** three convolutional blocks with batch normalization, global average
   pooling, dropout, optional augmentation, early stopping, learning-rate
   reduction, label smoothing, and top-3 accuracy.
@@ -97,7 +105,10 @@ tensorboard --logdir=logs/
 ```
 Go to: http://localhost:6006
 
-## Legacy results (pre-fix, not reliable: DEV==TEST bug, v2-v4 dispatch bug)
+## Legacy results (not reliable)
+
+The logs below predate the evaluation and model-dispatch fixes. They are
+historical records only and must not be compared with new runs.
 time: 56.0 seconds, epoch: 1, batch size: 500
 
 ```
@@ -158,7 +169,7 @@ Time elapsed:  103.03788709640503
 Baseline: 61.02% (10.07%)
 ```
 
-## SkLearn Baseline
+### SkLearn Baseline
 Tested against 10 classes.
 ```
 (finalProject) bash-3.2$ python baselinev2.py
@@ -185,7 +196,7 @@ Confusion matrix:  [[ 6789    59   397    70   112   402   296  1542   794  1189
  [ 1628   180   997   194   210   462   570   782   384  7112]]
 ```
 
-## SkLearn SVC
+### SkLearn SVC
 3 classes, 500 iters
 
 Linear
@@ -444,7 +455,7 @@ Normalized confusion matrix
   0.00e+00 0.00e+00]]
 ```
 
-## CNN initial test run
+### CNN initial test run
 
 ### CNN 50 classes trial.
 
@@ -549,7 +560,7 @@ Epoch 79/100
 ```
 
 
-## Models Version
+### Models Version
 
 ### CNN Model v1
 * This is the first model and it used 2 convolutions.
@@ -563,8 +574,13 @@ Epoch 79/100
 ### CNN Model v4
 * This is the fourth iteration of the model and we used v2 but had a dense layer of 256 (instead of 128).
 
+### CNN Model v5
+* This is the fifth historical baseline: v4 with a 64-unit dense layer.
 
-## Transfer learning test run
+### CNN Model v6
+* This is the current three-block CNN with batch normalization, global average pooling, dropout, and optional regularization.
+
+### Transfer learning test run
 Test with 2 epochs over night.
 ```
 Tuning our last custom layer...
@@ -701,7 +717,7 @@ Epoch 51/100
 641500/800000 [=======================>......] - ETA: 2s - loss: 15.7981 - acc: 0.0199^CTraceback (most recent call last):
 ```
 
-## TensorBoard
+### TensorBoard
 For CNN training at least, we have integrated tensor board support. You can view the training logs as follows
 
 ```
@@ -742,7 +758,7 @@ Epoch 9/100
 41000/48000 [========================>.....] - ETA: 13:46 - loss: 0.1857 - acc: 0.9282
 ```
 
-## CNN Network Model Architecture
+### CNN Network Model Architecture
 CNN network with 2 convolution layers.
 ![CNN_network](https://github.com/jervisfm/cs229-project/blob/master/cnn-model-network-architecture.png)
 

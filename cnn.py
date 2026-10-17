@@ -407,17 +407,19 @@ def main():
     experiment_result_string += "\nSimple CNN model DEV top-1 accuracy: %.2f%%" % (
         scores["accuracy"] * 100
     )
-    experiment_result_string += "\nSimple CNN model DEV top-3 accuracy: %.2f%%" % (
-        scores["top_3_accuracy"] * 100
-    )
+    if dummy_y_dev.shape[-1] >= 10:
+        experiment_result_string += "\nSimple CNN model DEV top-3 accuracy: %.2f%%" % (
+            scores["top_3_accuracy"] * 100
+        )
 
     scores = cnn_model.evaluate(X_test, dummy_y_test, verbose=0, return_dict=True)
     experiment_result_string += "\nSimple CNN model TEST top-1 accuracy: %.2f%%" % (
         scores["accuracy"] * 100
     )
-    experiment_result_string += "\nSimple CNN model TEST top-3 accuracy: %.2f%%" % (
-        scores["top_3_accuracy"] * 100
-    )
+    if dummy_y_test.shape[-1] >= 10:
+        experiment_result_string += "\nSimple CNN model TEST top-3 accuracy: %.2f%%" % (
+            scores["top_3_accuracy"] * 100
+        )
     
 
     print(experiment_result_string)

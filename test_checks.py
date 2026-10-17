@@ -4,13 +4,14 @@ import os
 import sys
 import tempfile
 import unittest
+import csv
 
 import numpy as np
 
 import massageData
 
 
-class Phase1Checks(unittest.TestCase):
+class TestChecks(unittest.TestCase):
     def test_splits_are_distinct_and_normalized(self):
         with tempfile.TemporaryDirectory() as folder:
             for class_index in range(2):
@@ -58,6 +59,7 @@ class Phase1Checks(unittest.TestCase):
                 np.save(os.path.join(data_folder, "class{}.npy".format(class_index)), values)
 
             original_argv = sys.argv
+            architectures = []
             try:
                 for version in range(1, 7):
                     sys.argv = [
@@ -66,8 +68,62 @@ class Phase1Checks(unittest.TestCase):
                         "--batch_size", "4", "--model_version", str(version),
                     ]
                     cnn.main()
+                    with open(
+                        os.path.join(results_folder, "simple_cnn_keras_model"),
+                        "r"
+                    ) as model_file:
+                        architectures.append(model_file.read())
             finally:
                 sys.argv = original_argv
+
+            self.assertEqual(len(architectures), 6)
+            self.assertEqual(len(set(architectures)), 6)
+
+    def test_experiment_runner_one_epoch_on_tiny_data(self):
+        import experiment_runner
+
+        with tempfile.TemporaryDirectory() as data_folder, tempfile.TemporaryDirectory() as output_folder:
+            for class_index in range(3):
+                values = np.full(
+                    (12, 784), class_index * 80, dtype=np.uint8
+                )
+                np.save(
+                    os.path.join(data_folder, "class{}.npy".format(class_index)),
+                    values
+                )
+
+            output = os.path.join(output_folder, "results.csv")
+            original_argv = sys.argv
+            try:
+                sys.argv = [
+                    "experiment_runner.py",
+                    "--data_folder", data_folder,
+                    "--output", output,
+                    "--seeds", "7",
+                    "--epochs", "1",
+                    "--batch_size", "4",
+                ]
+                experiment_runner.main()
+            finally:
+                sys.argv = original_argv
+
+            with open(output, newline="") as summary_file:
+                summary_rows = list(csv.DictReader(summary_file))
+            with open(
+                os.path.join(output_folder, "results_raw.csv"), newline=""
+            ) as raw_file:
+                raw_rows = list(csv.DictReader(raw_file))
+
+            self.assertEqual(
+                {row["model"] for row in summary_rows},
+                {
+                    "cnn_v1",
+                    "cnn_v6",
+                    "cnn_v6_augmentation",
+                    "cnn_v6_augmentation_label_smoothing_01",
+                },
+            )
+            self.assertEqual(len(raw_rows), 4)
 
     def test_transfer_learning_one_epoch_with_small_backbone(self):
         import transfer_learning

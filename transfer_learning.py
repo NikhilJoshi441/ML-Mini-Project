@@ -35,7 +35,7 @@ from tensorflow.keras.applications.efficientnet import EfficientNetB0
 def create_parser():
     parser = argparse.ArgumentParser(description='Train a transfer-learning model.')
     parser.add_argument('--max_iter', type=int, default=100)
-    parser.add_argument('--batch_size', type=int, default=500)
+    parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--data_folder', default='data/numpy_bitmap_3/')
     parser.add_argument('--results_folder', default='results/')
     parser.add_argument('--experiment_name')
@@ -439,17 +439,19 @@ def main():
     experiment_result_string += "\nTransfer learning model DEV top-1 accuracy: %.2f%%" % (
         scores["accuracy"] * 100
     )
-    experiment_result_string += "\nTransfer learning model DEV top-3 accuracy: %.2f%%" % (
-        scores["top_3_accuracy"] * 100
-    )
+    if dummy_y_dev.shape[-1] >= 10:
+        experiment_result_string += "\nTransfer learning model DEV top-3 accuracy: %.2f%%" % (
+            scores["top_3_accuracy"] * 100
+        )
 
     scores = model.evaluate(test_dataset, verbose=0, return_dict=True)
     experiment_result_string += "\nTransfer learning model TEST top-1 accuracy: %.2f%%" % (
         scores["accuracy"] * 100
     )
-    experiment_result_string += "\nTransfer learning model TEST top-3 accuracy: %.2f%%" % (
-        scores["top_3_accuracy"] * 100
-    )
+    if dummy_y_test.shape[-1] >= 10:
+        experiment_result_string += "\nTransfer learning model TEST top-3 accuracy: %.2f%%" % (
+            scores["top_3_accuracy"] * 100
+        )
 
     print(experiment_result_string)
     utils.write_contents_to_file(get_experiment_report_filename(), experiment_result_string)

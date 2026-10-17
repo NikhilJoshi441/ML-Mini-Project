@@ -19,7 +19,7 @@ echo "Transfer learning with VGG19"
 python3 transfer_learning.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_3/ --transfer_model=VGG19 --experiment_name="transfer_learning_with_VGG19_3_classes" "$@"
 
 echo "Transfer learning with InceptionV3"
-python3 transfer_learning.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_3/ --transfer_model=InceptionV3 --experiment_name="transfer_learning_with_InceptionV3_3_classes" --tune_source_model=True "$@"
+python3 transfer_learning.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_3/ --transfer_model=InceptionV3 --experiment_name="transfer_learning_with_InceptionV3_3_classes" --tune_source_model "$@"
 
 
 # All done

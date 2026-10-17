@@ -122,14 +122,23 @@ def run_cnn_models(seed, args, arrays, labels, num_classes):
     np.random.seed(seed)
     random.seed(seed)
     tf.random.set_seed(seed)
-    set_flags(cnn, args, seed)
-    return [
-        fit_and_measure(
-            name, cnn.model() if version == 1 else cnn.model_v6(),
-            arrays, labels, args.epochs, args.batch_size, num_classes >= 10
-        )
-        for version, name in ((1, "cnn_v1"), (6, "cnn_v6"))
-    ]
+    rows = []
+    for version, name, augmentation, label_smoothing in (
+        (1, "cnn_v1", False, 0.0),
+        (6, "cnn_v6", False, 0.0),
+        (6, "cnn_v6_augmentation", True, 0.0),
+        (6, "cnn_v6_augmentation_label_smoothing_01", True, 0.1),
+    ):
+        set_flags(cnn, args, seed)
+        cnn.FLAGS.model_version = version
+        cnn.FLAGS.augmentation = augmentation
+        cnn.FLAGS.label_smoothing = label_smoothing
+        model = cnn.model() if version == 1 else cnn.model_v6()
+        rows.append(fit_and_measure(
+            name, model, arrays, labels, args.epochs, args.batch_size,
+            num_classes >= 10
+        ))
+    return rows
 
 
 def run_transfer_models(seed, args, arrays, labels, num_classes):

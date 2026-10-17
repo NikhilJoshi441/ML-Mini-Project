@@ -50,6 +50,7 @@ results/*results*
 *.weights.h5
 *.log
 results.csv
+results_raw.csv
 
 # Large committed experiment artifacts
 cnn_model_weights_50.keras

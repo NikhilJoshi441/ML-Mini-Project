@@ -101,9 +101,15 @@ class massageData():
 
 
                 # Convert into NP Arrays.
-                self.X_train = np.concatenate(train_parts, axis=0).astype(np.float32)
-                self.X_dev = np.concatenate(dev_parts, axis=0).astype(np.float32)
-                self.X_test = np.concatenate(test_parts, axis=0).astype(np.float32)
+                self.X_train = np.concatenate(train_parts, axis=0).astype(
+                    np.float32, copy=False
+                )
+                self.X_dev = np.concatenate(dev_parts, axis=0).astype(
+                    np.float32, copy=False
+                )
+                self.X_test = np.concatenate(test_parts, axis=0).astype(
+                    np.float32, copy=False
+                )
                 self.Y = np.array(self.Y)
                 self.y_train = np.array(self.y_train)
                 self.y_test = np.array(self.y_test)

@@ -11,26 +11,26 @@
 set -x
 MAX_ITER=100
 echo "Running experiment on 3 classes !"
-python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_3/ --experiment_name="3_classes_modelv3" --model_version=3 --using_binarization=True "$@"
+python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_3/ --experiment_name="3_classes_modelv3" --model_version=3 --using_binarization "$@"
 
 # Run experiment on 10 classes
 echo "Running experiment on 10 classes !"
-python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_10/ --experiment_name="10_classes_modelv3" --model_version=3 --using_binarization=True "$@"
+python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_10/ --experiment_name="10_classes_modelv3" --model_version=3 --using_binarization "$@"
 
 # Run experiment on 50 classes
 echo "Running experiment on 50 classes !"
-python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_50/ --experiment_name="50_classes_modelv3" --model_version=3 --using_binarization=True "$@"
+python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_50/ --experiment_name="50_classes_modelv3" --model_version=3 --using_binarization "$@"
 
 echo "Running experiment on 3 classes !"
-python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_3/ --experiment_name="3_classes_modelv4" --model_version=4 --using_binarization=True "$@"
+python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_3/ --experiment_name="3_classes_modelv4" --model_version=4 --using_binarization "$@"
 
 # Run experiment on 10 classes
 echo "Running experiment on 10 classes !"
-python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_10/ --experiment_name="10_classes_modelv4" --model_version=4 --using_binarization=True "$@"
+python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_10/ --experiment_name="10_classes_modelv4" --model_version=4 --using_binarization "$@"
 
 # Run experiment on 50 classes
 echo "Running experiment on 50 classes !"
-python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_50/ --experiment_name="50_classes_modelv4" --model_version=4 --using_binarization=True "$@"
+python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_50/ --experiment_name="50_classes_modelv4" --model_version=4 --using_binarization "$@"
 
 # Run experiment on 100 classes
 #echo "Running experiment on 100 classes !"
