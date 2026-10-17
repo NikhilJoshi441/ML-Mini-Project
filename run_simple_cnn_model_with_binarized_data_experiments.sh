@@ -10,15 +10,15 @@
 set -x
 MAX_ITER=100
 echo "Running experiment on 3 classes !"
-python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_3/ --experiment_name="binarized_data_3_classes" --using_binarization=True "$@"
+python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_3/ --experiment_name="binarized_data_3_classes" --using_binarization "$@"
 
 # Run experiment on 10 classes
 echo "Running experiment on 10 classes !"
-python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_10/ --experiment_name="binarized_data_10_classes" --using_binarization=True "$@"
+python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_10/ --experiment_name="binarized_data_10_classes" --using_binarization "$@"
 
 # Run experiment on 50 classes
 echo "Running experiment on 50 classes !"
-python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_50/ --experiment_name="binarized_data_50_classes" --using_binarization=True "$@"
+python3 cnn.py --max_iter=$MAX_ITER --data_folder=data/numpy_bitmap_50/ --experiment_name="binarized_data_50_classes" --using_binarization "$@"
 
 # All done
 echo "All done !"
