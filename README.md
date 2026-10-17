@@ -1,18 +1,5 @@
 # cs229-project.
 
-## TODO
-- decide number of classes (try 50)
-	- update script
-- add visuals
-	- <s>add tensorboard</s>
-	- add models of binaries
-- <s>constants file</s>
-- make data splits (train, test, dev): DONE
-- change eval metric (add speed)
-- work on implementing SVM
-	- try different kernels (use Skikit-learn)
-	- figure out parameters
-
 ## Team Members
 - Connie 
 - Minh
@@ -33,7 +20,7 @@ Install the pinned Python dependencies:
 pip install -r requirements.txt
 ```
 
-Train the CNN (model v6 enables the Phase 3 improvements):
+Train the CNN with the current model v6:
 
 ```bash
 python cnn.py --data_folder data/numpy_bitmap_3/ --model_version 6 \
@@ -47,7 +34,7 @@ python transfer_learning.py --data_folder data/numpy_bitmap_3/ \
   --transfer_model EfficientNetB0 --input_size 128 --seed 7
 ```
 
-Run the reproducible Phase 4 comparison across CNN v1 and v6:
+Run the reproducible comparison across CNN v1 and v6:
 
 ```bash
 python experiment_runner.py --data_folder data/numpy_bitmap_3/ \
@@ -69,26 +56,26 @@ run on the target dataset:
 | CNN v6 | TBD | TBD | TBD | TBD | TBD | TBD |
 | Transfer backbones | TBD | TBD | TBD | TBD | TBD | TBD |
 
-Dataset to use is the Google Quick Draw dataset.
+### CNN model versions
+
+- **v1:** original two-convolution baseline.
+- **v2-v4:** historical architecture variants retained for comparison.
+- **v5:** historical deeper baseline retained for comparison.
+- **v6:** three convolutional blocks with batch normalization, global average
+  pooling, dropout, optional augmentation, early stopping, learning-rate
+  reduction, label smoothing, and top-3 accuracy.
+
+The results table remains `TBD` until the runner is executed on the target
+dataset. No results are inferred from the historical logs below.
 
 ## Downloading Dataset.
 
-The Google quickdraw dataset is hosted on Google Cloud Storage.
-
-To get a copy of it, you need to use gsutil to download.
-* Install gsutil from here: https://cloud.google.com/storage/docs/gsutil_install#install
-```
-$ curl https://sdk.cloud.google.com | bash
-$ exec -l $SHELL
-$ gcloud init
-```
-
-* Download all the image drawings from the dataset.
+The Google Quick Draw dataset can be downloaded with the included scripts:
 ```
 $ ./download_fulldataset.sh
 ```
 
-The fulldataset is big (~37GB). For initial testing, we would be using a small subset. 
+The full dataset is large (~37GB). For initial testing, use a small subset:
 ```
 $ ./download_minidataset.sh
 ```
@@ -110,51 +97,7 @@ tensorboard --logdir=logs/
 ```
 Go to: http://localhost:6006
 
-## Google cloud setup
-We have a Google VM for our deep learning experiments. Our common user is cs229.
-
-To access it run, the following command at the shell.
-```
-$ gcloud compute ssh --project cs229-2018 --zone "us-west1-b" cs229@cs229-vm-vm
-```
-
-You can set cs229-2018 as the default project for gcloud so you don't have to set it
-each time by running
-```
-$ gcloud config set project cs229-2018
-```
-
-We now also have a GPU machine instance that we use for training. You can connect to it like so:
-
-```
-$ gcloud compute ssh --zone "us-west1-b" cs229@cs229-gpu-vm
-```
-
-For the regular CPU only version of the cloud VM, you can access it like so:
-
-```
-$ gcloud compute ssh --zone "us-west1-b" cs229@cs229-vm-vm
-```
-
-We also use GNU screen for session management. To check for list of available sessions
-run 
-```
-$ screen -ls
-```
-
-We usually have a single `cs229` session that we all share. To attach to this session, just
-run 
-```
-$ screen -x cs229
-```
-
-Some helpful screen commands:
-* Open a new window in session - Ctrl + A, c
-* Go to next window in session - Ctrl + A, n
-* Go to previous window in session - Ctrl + A, p
-
-
-## Initial Baseline
+## Legacy results (pre-fix, not reliable: DEV==TEST bug, v2-v4 dispatch bug)
 time: 56.0 seconds, epoch: 1, batch size: 500
 
 ```
