@@ -1,4 +1,4 @@
-"""Run the comparable Phase 4 experiments on one fixed dataset split."""
+"""Run comparable experiments on per-seed train/dev/test splits."""
 
 import argparse
 import csv
@@ -8,10 +8,9 @@ import time
 
 import numpy as np
 import tensorflow as tf
-from tensorflow import keras
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from sklearn.preprocessing import LabelEncoder
 from tensorflow.keras.utils import to_categorical
+from sklearn.preprocessing import LabelEncoder
 
 import cnn
 import massageData
@@ -23,6 +22,10 @@ def create_parser():
     parser.add_argument("--data_folder", default="data/numpy_bitmap_3/")
     parser.add_argument("--output", default="results.csv")
     parser.add_argument("--seeds", nargs="+", type=int, default=[7, 17, 27])
+    parser.add_argument(
+        "--split_seed", type=int, default=None,
+        help="Base seed for per-training-seed data splits; defaults to each seed."
+    )
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch_size", type=int, default=500)
     parser.add_argument("--input_size", type=int, default=128)
@@ -45,8 +48,8 @@ def set_flags(module, args, seed):
         module.FLAGS.tune_source_model = False
 
 
-def load_fixed_split(folder):
-    data = massageData.massageData(folder=folder)
+def load_split(folder, split_seed):
+    data = massageData.massageData(folder=folder, split_seed=split_seed)
     encoder = LabelEncoder().fit(data.y_train)
     num_classes = len(encoder.classes_)
     labels = (
@@ -59,10 +62,11 @@ def load_fixed_split(folder):
         data.X_dev.reshape((-1, 28, 28, 1)),
         data.X_test.reshape((-1, 28, 28, 1)),
     )
-    return arrays, labels
+    return arrays, labels, num_classes
 
 
-def fit_and_measure(name, model, arrays, labels, epochs, batch_size):
+def fit_and_measure(name, model, arrays, labels, epochs, batch_size,
+                    include_top3):
     x_train, x_dev, x_test = arrays
     y_train, y_dev, y_test = labels
     callbacks = [
@@ -74,17 +78,33 @@ def fit_and_measure(name, model, arrays, labels, epochs, batch_size):
         x_train, y_train, validation_data=(x_dev, y_dev),
         epochs=epochs, batch_size=batch_size, verbose=0, callbacks=callbacks,
     )
-    elapsed = time.time() - start
     dev = model.evaluate(x_dev, y_dev, verbose=0, return_dict=True)
     test = model.evaluate(x_test, y_test, verbose=0, return_dict=True)
-    accuracy_key = "accuracy"
-    top3_key = "top_3_accuracy"
-    return {
+    result = {
         "model": name,
-        "dev_top1": dev[accuracy_key],
-        "dev_top3": dev[top3_key],
-        "test_top1": test[accuracy_key],
-        "test_top3": test[top3_key],
+        "dev_top1": dev["accuracy"],
+        "test_top1": test["accuracy"],
+        "training_time_secs": time.time() - start,
+        "parameter_count": model.count_params(),
+        "train_dev_accuracy_gap": (
+            history.history["accuracy"][-1] -
+            history.history["val_accuracy"][-1]
+        ),
+    }
+    if include_top3:
+        result["dev_top3"] = dev["top_3_accuracy"]
+        result["test_top3"] = test["top_3_accuracy"]
+    return result
+
+
+def measure_transfer_model(name, model, datasets, elapsed, history,
+                           include_top3):
+    dev = model.evaluate(datasets[1], verbose=0, return_dict=True)
+    test = model.evaluate(datasets[2], verbose=0, return_dict=True)
+    result = {
+        "model": name,
+        "dev_top1": dev["accuracy"],
+        "test_top1": test["accuracy"],
         "training_time_secs": elapsed,
         "parameter_count": model.count_params(),
         "train_dev_accuracy_gap": (
@@ -92,38 +112,27 @@ def fit_and_measure(name, model, arrays, labels, epochs, batch_size):
             history.history["val_accuracy"][-1]
         ),
     }
+    if include_top3:
+        result["dev_top3"] = dev["top_3_accuracy"]
+        result["test_top3"] = test["top_3_accuracy"]
+    return result
 
 
-def measure_trained_model(name, model, arrays, labels, elapsed):
-    dev = model.evaluate(arrays[1], verbose=0, return_dict=True)
-    test = model.evaluate(arrays[2], verbose=0, return_dict=True)
-    return {
-        "model": name,
-        "dev_top1": dev["accuracy"],
-        "dev_top3": dev["top_3_accuracy"],
-        "test_top1": test["accuracy"],
-        "test_top3": test["top_3_accuracy"],
-        "training_time_secs": elapsed,
-        "parameter_count": model.count_params(),
-        "train_dev_accuracy_gap": "",
-    }
-
-
-def run_one(seed, args, arrays, labels):
+def run_cnn_models(seed, args, arrays, labels, num_classes):
     np.random.seed(seed)
     random.seed(seed)
     tf.random.set_seed(seed)
-    rows = []
-
     set_flags(cnn, args, seed)
-    for version, name in ((1, "cnn_v1"), (6, "cnn_v6")):
-        model = cnn.model() if version == 1 else cnn.model_v6()
-        rows.append(fit_and_measure(name, model, arrays, labels, args.epochs, args.batch_size))
+    return [
+        fit_and_measure(
+            name, cnn.model() if version == 1 else cnn.model_v6(),
+            arrays, labels, args.epochs, args.batch_size, num_classes >= 10
+        )
+        for version, name in ((1, "cnn_v1"), (6, "cnn_v6"))
+    ]
 
-    return rows
 
-
-def run_transfer_one(seed, args, arrays, labels):
+def run_transfer_models(seed, args, arrays, labels, num_classes):
     rows = []
     set_flags(transfer_learning, args, seed)
     for backbone in transfer_learning.available_models:
@@ -137,50 +146,83 @@ def run_transfer_one(seed, args, arrays, labels):
             for index, (x, y) in enumerate(zip(arrays, labels))
         ]
         start = time.time()
-        model, _, _ = transfer_learning.transfer_learning(
-            datasets[0], datasets[1],
-            base, tune_source_model=False,
+        model, head_history, _ = transfer_learning.transfer_learning(
+            datasets[0], datasets[1], base, tune_source_model=False
         )
-        rows.append(measure_trained_model(
-            backbone, model, datasets, labels, time.time() - start
+        rows.append(measure_transfer_model(
+            backbone, model, datasets, time.time() - start, head_history,
+            num_classes >= 10
         ))
     return rows
 
 
-def main():
-    args = create_parser().parse_args()
-    arrays, labels = load_fixed_split(args.data_folder)
-    rows = []
-    for seed in args.seeds:
-        rows.extend(run_one(seed, args, arrays, labels))
-        if args.include_transfer:
-            rows.extend(run_transfer_one(seed, args, arrays, labels))
+def write_results(args, rows):
+    include_top3 = any("dev_top3" in row for row in rows)
+    raw_fields = ["seed", "split_seed", "model"]
+    for key in ("dev_top1", "dev_top3", "test_top1", "test_top3",
+                "training_time_secs", "parameter_count",
+                "train_dev_accuracy_gap"):
+        if any(key in row for row in rows):
+            raw_fields.append(key)
+    raw_output = os.path.join(
+        os.path.dirname(os.path.abspath(args.output)), "results_raw.csv"
+    )
+    with open(raw_output, "w", newline="") as output:
+        writer = csv.DictWriter(output, fieldnames=raw_fields)
+        writer.writeheader()
+        writer.writerows(rows)
 
-    fieldnames = ["model", "dev_top1_mean", "dev_top1_std",
-                  "dev_top3_mean", "dev_top3_std", "test_top1_mean",
-                  "test_top1_std", "test_top3_mean", "test_top3_std",
-                  "training_time_secs_mean", "training_time_secs_std",
-                  "parameter_count", "train_dev_accuracy_gap_mean",
-                  "train_dev_accuracy_gap_std"]
-    os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+    fieldnames = ["model", "dev_top1_mean", "dev_top1_std"]
+    if include_top3:
+        fieldnames += ["dev_top3_mean", "dev_top3_std"]
+    fieldnames += ["test_top1_mean", "test_top1_std"]
+    if include_top3:
+        fieldnames += ["test_top3_mean", "test_top3_std"]
+    fieldnames += [
+        "training_time_secs_mean", "training_time_secs_std",
+        "parameter_count", "train_dev_accuracy_gap_mean",
+        "train_dev_accuracy_gap_std",
+    ]
     with open(args.output, "w", newline="") as output:
         writer = csv.DictWriter(output, fieldnames=fieldnames)
         writer.writeheader()
         for name in sorted({row["model"] for row in rows}):
             group = [row for row in rows if row["model"] == name]
-            def values(key):
-                return np.asarray([
-                    float(row[key]) for row in group if row[key] != ""
-                ])
             summary = {"model": name}
-            for key in ("dev_top1", "dev_top3", "test_top1", "test_top3",
-                        "training_time_secs", "train_dev_accuracy_gap"):
-                data = values(key)
-                summary[key + "_mean"] = data.mean() if len(data) else ""
-                summary[key + "_std"] = data.std() if len(data) else ""
+            keys = ["dev_top1", "test_top1", "training_time_secs",
+                    "train_dev_accuracy_gap"]
+            if include_top3:
+                keys[1:1] = ["dev_top3"]
+                keys[3:3] = ["test_top3"]
+            for key in keys:
+                values = np.asarray([
+                    float(row[key]) for row in group if row.get(key, "") != ""
+                ])
+                summary[key + "_mean"] = values.mean() if len(values) else ""
+                summary[key + "_std"] = (
+                    values.std(ddof=1) if len(values) > 1 else ""
+                )
             summary["parameter_count"] = group[0]["parameter_count"]
             writer.writerow(summary)
 
+
+def main():
+    args = create_parser().parse_args()
+    os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+    rows = []
+    for seed in args.seeds:
+        split_seed = seed if args.split_seed is None else args.split_seed + seed
+        arrays, labels, num_classes = load_split(args.data_folder, split_seed)
+        seed_rows = run_cnn_models(seed, args, arrays, labels, num_classes)
+        if args.include_transfer:
+            seed_rows.extend(
+                run_transfer_models(seed, args, arrays, labels, num_classes)
+            )
+        rows.extend(
+            {"seed": seed, "split_seed": split_seed, **row}
+            for row in seed_rows
+        )
+    write_results(args, rows)
     print("Wrote {} experiment rows to {}".format(len(rows), args.output))
 
 

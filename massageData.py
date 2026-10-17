@@ -27,7 +27,8 @@ class massageData():
                 """ Returns a tuple of x,y for the developmetn dataset. """
                 return (self.X_dev, self.y_dev)
 
-        def __init__(self, folder='data/numpy_bitmap/', binarize=False):
+        def __init__(self, folder='data/numpy_bitmap/', binarize=False,
+                     split_seed=42):
                 """
                 Creates is new instsance of massageData.
 
@@ -61,7 +62,7 @@ class massageData():
                 self.y_dev = []
                 self.y_test = []
 
-                random_seed = 42
+                random_seed = split_seed
                 # Some classes have as much as 100-250K examples. This leads to OOMS when loading data via numpy. So limit number of examples per class.
                 max_num_examples_per_class = 20000
                 for index, filename in enumerate(os.listdir(self.folder)):
