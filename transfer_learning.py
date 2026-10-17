@@ -415,14 +415,16 @@ def main():
     experiment_result_string += "\nTraining time(secs): {}".format(training_duration_secs)
     experiment_result_string += "\nMax training iterations: {}".format(FLAGS.max_iter)
     experiment_result_string += "\nTraining time / Max training iterations: {}".format( 1.0 * training_duration_secs / FLAGS.max_iter)
-    experiment_result_string += "\nFinal head train/dev accuracy gap: {:.6f}".format(
-        head_history.history["accuracy"][-1] -
-        head_history.history["val_accuracy"][-1]
+    head_best_epoch = int(np.argmin(head_history.history["val_loss"]))
+    experiment_result_string += "\nBest-epoch head train/dev accuracy gap: {:.6f}".format(
+        head_history.history["accuracy"][head_best_epoch] -
+        head_history.history["val_accuracy"][head_best_epoch]
     )
     if FLAGS.tune_source_model:
-        experiment_result_string += "\nFinal fine-tune train/dev accuracy gap: {:.6f}".format(
-            fine_tune_history.history["accuracy"][-1] -
-            fine_tune_history.history["val_accuracy"][-1]
+        fine_tune_best_epoch = int(np.argmin(fine_tune_history.history["val_loss"]))
+        experiment_result_string += "\nBest-epoch fine-tune train/dev accuracy gap: {:.6f}".format(
+            fine_tune_history.history["accuracy"][fine_tune_best_epoch] -
+            fine_tune_history.history["val_accuracy"][fine_tune_best_epoch]
         )
 
     dummy_y_pred_dev = model.predict(dev_dataset)

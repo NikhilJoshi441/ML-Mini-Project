@@ -28,6 +28,7 @@ def create_parser():
     )
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch_size", type=int, default=500)
+    parser.add_argument("--transfer_batch_size", type=int, default=128)
     parser.add_argument("--input_size", type=int, default=128)
     parser.add_argument("--fine_tune_layers", type=int, default=20)
     parser.add_argument("--include_transfer", action="store_true")
@@ -80,6 +81,7 @@ def fit_and_measure(name, model, arrays, labels, epochs, batch_size,
     )
     dev = model.evaluate(x_dev, y_dev, verbose=0, return_dict=True)
     test = model.evaluate(x_test, y_test, verbose=0, return_dict=True)
+    best_epoch = int(np.argmin(history.history["val_loss"]))
     result = {
         "model": name,
         "dev_top1": dev["accuracy"],
@@ -87,8 +89,8 @@ def fit_and_measure(name, model, arrays, labels, epochs, batch_size,
         "training_time_secs": time.time() - start,
         "parameter_count": model.count_params(),
         "train_dev_accuracy_gap": (
-            history.history["accuracy"][-1] -
-            history.history["val_accuracy"][-1]
+            history.history["accuracy"][best_epoch] -
+            history.history["val_accuracy"][best_epoch]
         ),
     }
     if include_top3:
@@ -101,6 +103,7 @@ def measure_transfer_model(name, model, datasets, elapsed, history,
                            include_top3):
     dev = model.evaluate(datasets[1], verbose=0, return_dict=True)
     test = model.evaluate(datasets[2], verbose=0, return_dict=True)
+    best_epoch = int(np.argmin(history.history["val_loss"]))
     result = {
         "model": name,
         "dev_top1": dev["accuracy"],
@@ -108,8 +111,8 @@ def measure_transfer_model(name, model, datasets, elapsed, history,
         "training_time_secs": elapsed,
         "parameter_count": model.count_params(),
         "train_dev_accuracy_gap": (
-            history.history["accuracy"][-1] -
-            history.history["val_accuracy"][-1]
+            history.history["accuracy"][best_epoch] -
+            history.history["val_accuracy"][best_epoch]
         ),
     }
     if include_top3:
@@ -133,6 +136,10 @@ def run_cnn_models(seed, args, arrays, labels, num_classes):
         cnn.FLAGS.model_version = version
         cnn.FLAGS.augmentation = augmentation
         cnn.FLAGS.label_smoothing = label_smoothing
+        np.random.seed(seed)
+        random.seed(seed)
+        tf.random.set_seed(seed)
+        tf.keras.backend.clear_session()
         model = cnn.model() if version == 1 else cnn.model_v6()
         rows.append(fit_and_measure(
             name, model, arrays, labels, args.epochs, args.batch_size,
@@ -149,7 +156,7 @@ def run_transfer_models(seed, args, arrays, labels, num_classes):
         image_size, base, preprocess = transfer_learning.get_source_model(backbone)
         datasets = [
             transfer_learning.create_transfer_dataset(
-                x, y, image_size, preprocess, args.batch_size,
+                x, y, image_size, preprocess, args.transfer_batch_size,
                 shuffle=index == 0
             )
             for index, (x, y) in enumerate(zip(arrays, labels))

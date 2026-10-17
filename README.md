@@ -34,7 +34,7 @@ python transfer_learning.py --data_folder data/numpy_bitmap_3/ \
   --transfer_model EfficientNetB0 --input_size 128 --seed 7
 ```
 
-Run the reproducible comparison across CNN v1 and v6:
+Run the reproducible comparison across all CNN runner variants:
 
 ```bash
 python experiment_runner.py --data_folder data/numpy_bitmap_3/ \
@@ -42,9 +42,13 @@ python experiment_runner.py --data_folder data/numpy_bitmap_3/ \
 ```
 
 Add `--include_transfer` to include all configured transfer-learning backbones.
-The runner uses the same per-class train/dev/test split for every model within
-each seed, re-splitting for each seed, and writes mean and standard deviation
-columns to `results.csv` plus per-seed rows to `results_raw.csv`.
+The runner evaluates `cnn_v1`, `cnn_v6`, `cnn_v6_augmentation`, and
+`cnn_v6_augmentation_label_smoothing_01` on the same per-class train/dev/test
+split within each seed, re-splitting for each seed. It writes mean and standard
+deviation columns to `results.csv` plus per-seed rows to `results_raw.csv`.
+Transfer datasets use `--transfer_batch_size` independently from the CNN
+`--batch_size`. Top-3 metrics are reported only for datasets with at least
+10 classes.
 
 For a small ten-class run:
 
@@ -60,15 +64,17 @@ run on the target dataset:
 
 | Model | Dev top-1 mean +/- std | Dev top-3 mean +/- std | Test top-1 mean +/- std | Test top-3 mean +/- std | Training time | Parameters |
 |---|---|---|---|---|---|---|
-| CNN v1 | TBD | TBD | TBD | TBD | TBD | TBD |
-| CNN v6 | TBD | TBD | TBD | TBD | TBD | TBD |
+| cnn_v1 | TBD | TBD | TBD | TBD | TBD | TBD |
+| cnn_v6 | TBD | TBD | TBD | TBD | TBD | TBD |
+| cnn_v6_augmentation | TBD | TBD | TBD | TBD | TBD | TBD |
+| cnn_v6_augmentation_label_smoothing_01 | TBD | TBD | TBD | TBD | TBD | TBD |
 | Transfer backbones | TBD | TBD | TBD | TBD | TBD | TBD |
 
 ### CNN model versions
 
 - **v1:** original two-convolution baseline.
 - **v2-v4:** historical architecture variants retained for comparison.
-- **v5:** fourteenth-filter convolutional baseline with a 64-unit dense layer.
+- **v5:** 14-filter convolutional baseline with a 64-unit dense layer.
 - **v6:** three convolutional blocks with batch normalization, global average
   pooling, dropout, optional augmentation, early stopping, learning-rate
   reduction, label smoothing, and top-3 accuracy.

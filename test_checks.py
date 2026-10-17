@@ -12,6 +12,13 @@ import massageData
 
 
 class TestChecks(unittest.TestCase):
+    @staticmethod
+    def architecture_signature(model):
+        return (
+            tuple(layer.__class__.__name__ for layer in model.layers),
+            model.count_params(),
+        )
+
     def test_splits_are_distinct_and_normalized(self):
         with tempfile.TemporaryDirectory() as folder:
             for class_index in range(2):
@@ -47,7 +54,7 @@ class TestChecks(unittest.TestCase):
             cnn.FLAGS.data_folder = folder
             models = [cnn.model_v2(), cnn.model_v3(), cnn.model_v4(), cnn.model_v5()]
 
-        architectures = [model.to_json() for model in models]
+        architectures = [self.architecture_signature(model) for model in models]
         self.assertEqual(len(architectures), len(set(architectures)))
 
     def test_cnn_main_dispatches_all_versions(self):
@@ -61,6 +68,8 @@ class TestChecks(unittest.TestCase):
             original_argv = sys.argv
             architectures = []
             try:
+                from tensorflow import keras
+
                 for version in range(1, 7):
                     sys.argv = [
                         "cnn.py", "--data_folder", data_folder,
@@ -72,7 +81,10 @@ class TestChecks(unittest.TestCase):
                         os.path.join(results_folder, "simple_cnn_keras_model"),
                         "r"
                     ) as model_file:
-                        architectures.append(model_file.read())
+                        saved_model = keras.models.model_from_json(
+                            model_file.read()
+                        )
+                    architectures.append(self.architecture_signature(saved_model))
             finally:
                 sys.argv = original_argv
 

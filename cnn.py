@@ -388,9 +388,10 @@ def main():
     experiment_result_string += "\nTraining time(secs): {}".format(training_duration_secs)
     experiment_result_string += "\nMax training iterations: {}".format(FLAGS.max_iter)
     experiment_result_string += "\nTraining time / Max training iterations: {}".format( 1.0 * training_duration_secs / FLAGS.max_iter)
-    experiment_result_string += "\nFinal train/dev accuracy gap: {:.6f}".format(
-        history.history["accuracy"][-1] -
-        history.history["val_accuracy"][-1]
+    best_epoch = int(np.argmin(history.history["val_loss"]))
+    experiment_result_string += "\nBest-epoch train/dev accuracy gap: {:.6f}".format(
+        history.history["accuracy"][best_epoch] -
+        history.history["val_accuracy"][best_epoch]
     )
 
     dummy_y_pred_dev = cnn_model.predict(X_dev)
