@@ -54,20 +54,18 @@ class massageData():
                 # will do the split for each categories (e.g. airplane) as we load it. This avoids any
                 # potential issues train/test/dev splits not being fairly balanced.
 
-                self.X_train = np.zeros((0, utils.BITMAP_DIM))
+                train_parts = []
+                dev_parts = []
+                test_parts = []
                 self.y_train = []
-
-                self.X_dev = np.zeros((0, utils.BITMAP_DIM))
                 self.y_dev = []
-
-                self.X_test= np.zeros((0, utils.BITMAP_DIM))
                 self.y_test = []
 
                 random_seed = 42
                 # Some classes have as much as 100-250K examples. This leads to OOMS when loading data via numpy. So limit number of examples per class.
                 max_num_examples_per_class = 20000
                 for index, filename in enumerate(os.listdir(self.folder)):
-                        fullpath = self.folder + filename
+                        fullpath = os.path.join(self.folder, filename)
                         # use filename as Y label.
                         print("Processing file #: {} - Name={}".format(index, filename))
                         name = filename[:-4]
@@ -90,20 +88,21 @@ class massageData():
                         X_train, X_eval, y_train, y_eval = train_test_split(x, y, test_size=0.2,random_state=random_seed)
                         X_dev, X_test, y_dev, y_test = train_test_split(X_eval, y_eval, test_size=0.5, random_state=random_seed)
 
-                        # Train split.
-                        self.X_train = np.concatenate((self.X_train, X_train), axis=0)
+                        # Keep each split float32 and concatenate only once.
+                        train_parts.append(np.asarray(X_train, dtype=np.float32))
                         self.y_train += y_train
 
-                        # Dev split.
-                        self.X_dev = np.concatenate((self.X_dev, X_dev), axis=0)
+                        dev_parts.append(np.asarray(X_dev, dtype=np.float32))
                         self.y_dev += y_dev
 
-                        # Test split.
-                        self.X_test = np.concatenate((self.X_test, X_test), axis=0)
+                        test_parts.append(np.asarray(X_test, dtype=np.float32))
                         self.y_test += y_test
 
 
                 # Convert into NP Arrays.
+                self.X_train = np.concatenate(train_parts, axis=0).astype(np.float32)
+                self.X_dev = np.concatenate(dev_parts, axis=0).astype(np.float32)
+                self.X_test = np.concatenate(test_parts, axis=0).astype(np.float32)
                 self.Y = np.array(self.Y)
                 self.y_train = np.array(self.y_train)
                 self.y_test = np.array(self.y_test)

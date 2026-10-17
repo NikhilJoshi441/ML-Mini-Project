@@ -95,8 +95,8 @@ def fit_and_measure(name, model, arrays, labels, epochs, batch_size):
 
 
 def measure_trained_model(name, model, arrays, labels, elapsed):
-    dev = model.evaluate(arrays[1], labels[1], verbose=0, return_dict=True)
-    test = model.evaluate(arrays[2], labels[2], verbose=0, return_dict=True)
+    dev = model.evaluate(arrays[1], verbose=0, return_dict=True)
+    test = model.evaluate(arrays[2], verbose=0, return_dict=True)
     return {
         "model": name,
         "dev_top1": dev["accuracy"],
@@ -129,17 +129,20 @@ def run_transfer_one(seed, args, arrays, labels):
     for backbone in transfer_learning.available_models:
         transfer_learning.FLAGS.transfer_model = backbone
         image_size, base, preprocess = transfer_learning.get_source_model(backbone)
-        converted = [
-            transfer_learning.convertTo3Channels(x, image_size, preprocess)
-            for x in arrays
+        datasets = [
+            transfer_learning.create_transfer_dataset(
+                x, y, image_size, preprocess, args.batch_size,
+                shuffle=index == 0
+            )
+            for index, (x, y) in enumerate(zip(arrays, labels))
         ]
         start = time.time()
         model, _, _ = transfer_learning.transfer_learning(
-            converted[0], labels[0], converted[1], labels[1],
+            datasets[0], datasets[1],
             base, tune_source_model=False,
         )
         rows.append(measure_trained_model(
-            backbone, model, converted, labels, time.time() - start
+            backbone, model, datasets, labels, time.time() - start
         ))
     return rows
 

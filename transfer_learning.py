@@ -175,7 +175,8 @@ def model():
     classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     return classifier
 
-def transfer_learning(X, y, X_dev, y_dev, source_model=None, tune_source_model=True):
+def transfer_learning(train_dataset, dev_dataset, source_model=None,
+                      tune_source_model=True):
     # Based on code snippets from:https://keras.io/applications/
     print("Building transfer learning model...")
     # create the base pre-trained model
@@ -211,8 +212,8 @@ def transfer_learning(X, y, X_dev, y_dev, source_model=None, tune_source_model=T
         ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2)
     ]
     head_history = model.fit(
-        X, y, epochs=FLAGS.max_iter, batch_size=FLAGS.batch_size,
-        verbose=1, validation_data=(X_dev, y_dev), callbacks=callbacks
+        train_dataset, epochs=FLAGS.max_iter, verbose=1,
+        validation_data=dev_dataset, callbacks=callbacks
     )
 
     if not tune_source_model:
@@ -244,8 +245,8 @@ def transfer_learning(X, y, X_dev, y_dev, source_model=None, tune_source_model=T
     print("Tuning the last 2 inceptions layers ...")
     plot_losses = TrainingPlot( get_training_plot_filename() + "_tune_transfer_model_last_layer")
     fine_tune_history = model.fit(
-        X, y, epochs=FLAGS.max_iter, batch_size=FLAGS.batch_size,
-        verbose=1, validation_data=(X_dev, y_dev), callbacks=callbacks
+        train_dataset, epochs=FLAGS.max_iter, verbose=1,
+        validation_data=dev_dataset, callbacks=callbacks
     )
     return model, head_history, fine_tune_history
 
@@ -261,23 +262,30 @@ def convert_predictions_to_onehot(predictions, num_classes):
         result[i] = get_onehot_vector(predictions[i], num_classes)
     return result
 
-def convertTo3Channels(x, new_image_size=(128, 128), preprocess_input=None):
-        print ('Convert data to shape: {}'.format(new_image_size))
-        # x has shape (m. size, size, # channels)
-        num_examples, size_x, size_y, _ = x.shape
-        result = np.zeros((num_examples, new_image_size[0], new_image_size[1], 3))
-        num_channels = 3
-        # TODO: Try red color drawings...
-        for i in range(num_examples):
-            source_image = x[i, :, :, 0]
-            scaled_image = tf.image.resize(
-                source_image[..., np.newaxis], new_image_size
-            ).numpy()[..., 0]
-            for j in range(num_channels):
-                result[i, :, :, j] = scaled_image
-        if preprocess_input is not None:
-            result = np.asarray(preprocess_input(result * 255.0))
-        return result
+def create_transfer_dataset(x, y, new_image_size, preprocess_input,
+                            batch_size, shuffle=False):
+        """Resize and preprocess transfer images in float32 batches."""
+        dataset = tf.data.Dataset.from_tensor_slices((
+            np.asarray(x, dtype=np.float32),
+            np.asarray(y, dtype=np.float32),
+        ))
+        if shuffle:
+                dataset = dataset.shuffle(
+                    buffer_size=len(x), seed=FLAGS.seed,
+                    reshuffle_each_iteration=True
+                )
+        dataset = dataset.batch(batch_size)
+
+        def preprocess_batch(images, labels):
+                images = tf.image.resize(images, new_image_size)
+                images = tf.image.grayscale_to_rgb(images)
+                images = tf.cast(images, tf.float32) * 255.0
+                images = preprocess_input(images)
+                return tf.cast(images, tf.float32), labels
+
+        return dataset.map(
+            preprocess_batch, num_parallel_calls=tf.data.AUTOTUNE
+        ).prefetch(tf.data.AUTOTUNE)
 
 # for inline mutate x instead of 
 
@@ -377,14 +385,20 @@ def main():
 
     new_image_size, source_model, preprocess_input = get_source_model(FLAGS.transfer_model)
 
-    print("Converting input images for transfer learning...")
-    X_dev = convertTo3Channels(X_dev, new_image_size, preprocess_input)
-    X_test = convertTo3Channels(X_test, new_image_size, preprocess_input)
-    X = convertTo3Channels(X, new_image_size, preprocess_input)
+    print("Creating transfer-learning input pipeline...")
+    train_dataset = create_transfer_dataset(
+        X, dummy_y, new_image_size, preprocess_input, FLAGS.batch_size, shuffle=True
+    )
+    dev_dataset = create_transfer_dataset(
+        X_dev, dummy_y_dev, new_image_size, preprocess_input, FLAGS.batch_size
+    )
+    test_dataset = create_transfer_dataset(
+        X_test, dummy_y_test, new_image_size, preprocess_input, FLAGS.batch_size
+    )
     print ("Done preprocessing dataset")
 
     model, head_history, fine_tune_history = transfer_learning(
-        X, dummy_y, X_dev, dummy_y_dev, source_model, FLAGS.tune_source_model
+        train_dataset, dev_dataset, source_model, FLAGS.tune_source_model
     )
 
     t1 = time.time()
@@ -404,8 +418,8 @@ def main():
             fine_tune_history.history["val_accuracy"][-1]
         )
 
-    dummy_y_pred_dev = model.predict(X_dev)
-    dummy_y_pred_test = model.predict(X_test)
+    dummy_y_pred_dev = model.predict(dev_dataset)
+    dummy_y_pred_test = model.predict(test_dataset)
 
     # Need to take argmax to find most likely class.
     dummy_y_pred_dev_class = dummy_y_pred_dev.argmax(axis=-1)
@@ -413,11 +427,11 @@ def main():
 
 
     # evaluate the model
-    scores = model.evaluate(X_dev, dummy_y_dev,  verbose=0)
+    scores = model.evaluate(dev_dataset, verbose=0)
     print("Model metric names: ", model.metrics_names)
     experiment_result_string += "Tranfer learning model result DEV  %s: %.2f%%" % (model.metrics_names[1], scores[1] * 100)
 
-    scores = model.evaluate(X_test, dummy_y_test,  verbose=0)    
+    scores = model.evaluate(test_dataset, verbose=0)
     experiment_result_string += "Tranfer learning model result TEST  %s: %.2f%%" % (model.metrics_names[1], scores[1] * 100)
 
     print(experiment_result_string)
