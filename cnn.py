@@ -403,11 +403,21 @@ def main():
 
 
     # evaluate the model
-    scores = cnn_model.evaluate(X_dev, dummy_y_dev,  verbose=0)
-    experiment_result_string += "Simple CNN model DEV %s: %.2f%%" % (cnn_model.metrics_names[1], scores[1] * 100)
+    scores = cnn_model.evaluate(X_dev, dummy_y_dev, verbose=0, return_dict=True)
+    experiment_result_string += "\nSimple CNN model DEV top-1 accuracy: %.2f%%" % (
+        scores["accuracy"] * 100
+    )
+    experiment_result_string += "\nSimple CNN model DEV top-3 accuracy: %.2f%%" % (
+        scores["top_3_accuracy"] * 100
+    )
 
-    scores = cnn_model.evaluate(X_test, dummy_y_test,  verbose=0)
-    experiment_result_string += "\nSimple CNN model TEST %s: %.2f%%" % (cnn_model.metrics_names[1], scores[1] * 100)
+    scores = cnn_model.evaluate(X_test, dummy_y_test, verbose=0, return_dict=True)
+    experiment_result_string += "\nSimple CNN model TEST top-1 accuracy: %.2f%%" % (
+        scores["accuracy"] * 100
+    )
+    experiment_result_string += "\nSimple CNN model TEST top-3 accuracy: %.2f%%" % (
+        scores["top_3_accuracy"] * 100
+    )
     
 
     print(experiment_result_string)

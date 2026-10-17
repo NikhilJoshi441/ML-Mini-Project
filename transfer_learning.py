@@ -434,12 +434,22 @@ def main():
 
 
     # evaluate the model
-    scores = model.evaluate(dev_dataset, verbose=0)
+    scores = model.evaluate(dev_dataset, verbose=0, return_dict=True)
     print("Model metric names: ", model.metrics_names)
-    experiment_result_string += "Tranfer learning model result DEV  %s: %.2f%%" % (model.metrics_names[1], scores[1] * 100)
+    experiment_result_string += "\nTransfer learning model DEV top-1 accuracy: %.2f%%" % (
+        scores["accuracy"] * 100
+    )
+    experiment_result_string += "\nTransfer learning model DEV top-3 accuracy: %.2f%%" % (
+        scores["top_3_accuracy"] * 100
+    )
 
-    scores = model.evaluate(test_dataset, verbose=0)
-    experiment_result_string += "Tranfer learning model result TEST  %s: %.2f%%" % (model.metrics_names[1], scores[1] * 100)
+    scores = model.evaluate(test_dataset, verbose=0, return_dict=True)
+    experiment_result_string += "\nTransfer learning model TEST top-1 accuracy: %.2f%%" % (
+        scores["accuracy"] * 100
+    )
+    experiment_result_string += "\nTransfer learning model TEST top-3 accuracy: %.2f%%" % (
+        scores["top_3_accuracy"] * 100
+    )
 
     print(experiment_result_string)
     utils.write_contents_to_file(get_experiment_report_filename(), experiment_result_string)
